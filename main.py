@@ -6,8 +6,6 @@ import platform
 import sys
 import argparse
 from pathlib import Path
-import argparse
-from pathlib import Path
 import json
 import base64
 import datetime
@@ -130,6 +128,7 @@ def get_node_by_parts(root, parts):
             return None
     return cur
 
+
 class ShellEmu:
     def __init__(self, vfs_path, start_path):
         self.vfs_path = vfs_path
@@ -150,7 +149,7 @@ class ShellEmu:
         self.cwd_parts = []
         
         self.root = tk.Tk()
-        
+
         try:
             self.user = os.getlogin()
         except Exception:
@@ -168,6 +167,14 @@ class ShellEmu:
 
         self.input_field.bind("<Return>", self.execute_command)
         self.input_field.focus()
+        
+        if self.vfs_path == "":
+            print("No VFS specified. Using default.")
+        
+        if self.start_path == "":
+            print("No start script specified.")
+        else:
+            self.start_script()
 
         self.root.mainloop()
         
@@ -202,17 +209,36 @@ class ShellEmu:
             self.cm_ws(args)
         elif command == "date":
             self.cm_date()
+        elif command == "mv":
+            self.cm_mv(args)
+        elif command  == "echo":
+            self.cm_echo(" ".join(args))
         elif command == "help":
             self.cm_help()
         elif command == "ls" or command == "dir":
             self.cm_ls(args)
         elif command == "cd":
             self.cm_cd(args)
+        elif command == "pwd":
+            self.cm_pwd()
+        elif command == "cat":
+            self.cm_cat(args)
+        elif command == "info":
+            self.cm_info(args)
+        elif command == "tree":
+            self.cm_tree(args)
+        elif command == "tail":
+            self.cm_tail(args)
         elif command == "conf-dump":
             self.cm_confdump()
+        elif command == "mkdir":
+            self.cm_mkdir(args)
+        elif command == "rmdir":
+            self.cm_rmdir(args)
+        elif command == "chmod":
+            self.cm_chmod(args)
         else:
             self.output("No such command: " + command)
-            return False
         
         self.input_field.delete(0, tk.END)
         
@@ -220,38 +246,58 @@ class ShellEmu:
         #self.history.update()
         
     def execute_command_bad(self, full):      
-            tokens = full.split()
+        tokens = full.split()
+        
+        if (len(tokens) == 0):
+            return True # not a fail so probably keep going it's fine
             
-            if (len(tokens) == 0):
-                return True # not a fail so probably keep going it's fine
-                
-            self.output("> " + full)
+        self.output("> " + full)
+        
+        command = tokens[0]
+        args = tokens[1:]
+        
+        if command == "exit":
+            self.cm_exit()
+        elif command == "clear":
+            self.cm_clear()
+        elif command == "wc":
+            self.cm_ws(args)
+        elif command == "date":
+            self.cm_date()
+        elif command == "mv":
+            self.cm_mv(args)
+        elif command  == "echo":
+            self.cm_echo(" ".join(args))
+        elif command == "help":
+            self.cm_help()
+        elif command == "ls" or command == "dir":
+            self.cm_ls(args)
+        elif command == "cd":
+            self.cm_cd(args)
+        elif command == "pwd":
+            self.cm_pwd()
+        elif command == "cat":
+            self.cm_cat(args)
+        elif command == "info":
+            self.cm_info(args)
+        elif command == "tree":
+            self.cm_tree(args)
+        elif command == "tail":
+            self.cm_tail(args)
+        elif command == "conf-dump":
+            self.cm_confdump()
+        elif command == "mkdir":
+            self.cm_mkdir(args)
+        elif command == "rmdir":
+            self.cm_rmdir(args)
+        elif command == "chmod":
+            self.cm_chmod(args)
+        else:
+            self.output("No such command: " + command)
+            return False
             
-            command = tokens[0]
-            args = tokens[1:]
-            
-            if command == "exit":
-                self.cm_exit()
-            elif command == "clear":
-                self.cm_clear()
-            elif command == "wc":
-                self.cm_ws(args)
-            elif command == "date":
-                self.cm_date()
-            elif command == "help":
-                self.cm_help()
-            elif command == "ls" or command == "dir":
-                self.cm_ls(args)
-            elif command == "cd":
-                self.cm_cd(args)
-            elif command == "conf-dump":
-                self.cm_confdump()
-            else:
-                self.output("No such command: " + command)
-                return False
-                
-            self.history.yview(tk.END)
-            return True
+        self.history.yview(tk.END)
+        return True
         
     def output(self, text):
         self.history.config(state="normal")
@@ -261,10 +307,6 @@ class ShellEmu:
     def cm_exit(self):
         self.root.destroy()
         #exit(0)
-        
-    def cm_confdump(self):
-        self.output(f"vfs_path={self.vfs_path}")
-        self.output(f"start_path={self.start_path}")
         
     def cm_clear(self):
         self.history.config(state="normal")
@@ -301,6 +343,57 @@ class ShellEmu:
         now = datetime.datetime.now()
         self.output(now.strftime("%Y-%m-%d %H:%M:%S"))
         
+    def cm_mv(self, args):
+        if len(args) < 2:
+            self.output("Usage: mv <source> <destination>")
+            return
+
+        src, dst = args[0], args[1]
+
+        src_node, src_parts = self._resolve_or_report(src)
+        if src_node is None:
+            return
+
+        if not src_parts:
+            self.output("Error. mv: cannot move root directory")
+            return
+
+        src_parent = get_node_by_parts(self.vfs_root, src_parts[:-1])
+        if not src_parent or not src_parent.is_dir():
+            self.output("Error. mv: source parent not found")
+            return
+
+        dst_node, dst_parts = self._resolve_or_report(dst)
+        if dst_node and dst_node.is_dir():
+            new_name = src_parts[-1]
+            dst_parent = dst_node
+        else:
+            if "/" in dst:
+                parent_path, new_name = dst.rsplit("/", 1)
+                dst_parent, _ = self._resolve_or_report(parent_path)
+                if dst_parent is None or not dst_parent.is_dir():
+                    self.output(f"Error. mv: destination parent '{parent_path}' not found")
+                    return
+            else:
+                dst_parent = get_node_by_parts(self.vfs_root, self.cwd_parts)
+                new_name = dst
+
+        if dst_parent.get_child(new_name):
+            self.output(f"Error. mv: target '{new_name}' already exists in destination")
+            return
+
+        del src_parent.children[src_parts[-1]]
+        src_node.name = new_name
+        dst_parent.add_child(src_node)
+
+        self.output(f"Ok. moved '{src}' to '{dst}'")
+        
+    def cm_echo(self, text):
+        self.output(text)
+        
+    def cm_help(self):
+        self.output("no")
+        
     def cm_ls(self, args):
         if not self.vfs_root:
             self.output("Error. No VFS loaded. Cannot list directories.")
@@ -332,6 +425,148 @@ class ShellEmu:
             self.output("No such directory: " + (target or "/"))
             return
         self.cwd_parts = parts
+        
+    def cm_pwd(self):
+        self.output("/" + "/".join(self.cwd_parts))
+
+    def cm_cat(self, args):
+        if not args:
+            self.output("Usage: cat <file>")
+            return
+        target = args[0]
+        node, parts = self._resolve_or_report(target)
+        if node is None:
+            return
+        if node.is_dir():
+            self.output("Error. cat: is a directory")
+            return
+        # attempt to show text if it's utf-8
+        text = node.read_text()
+        if text is not None:
+            self.output(text)
+        else:
+            # show hexdump for binary
+            self.output("[binary file] hex:")
+            hexs = node.read_hex()
+            # chunk hex for readability
+            for i in range(0, len(hexs), 64):
+                self.output(hexs[i:i+64])
+        
+    def cm_confdump(self):
+        self.output(f"vfs_path={self.vfs_path}")
+        self.output(f"start_path={self.start_path}")
+        
+    def cm_tree(self, args):
+        if not self.vfs_root:
+            self.output("Error. No VFS loaded.")
+            return
+        
+        target = args[0] if args else ""
+        node, _ = self._resolve_or_report(target)
+        if node is None:
+            return
+
+        def walk(node, prefix=""):
+            if node.is_dir():
+                self.output(prefix + node.name + "/")
+                children = node.list_names()
+                for i, name in enumerate(children):
+                    child = node.get_child(name)
+                    last = i == len(children) - 1
+                    walk(child, prefix + ("    " if last else "│   "))
+            else:
+                self.output(prefix + node.name)
+        
+        walk(node)
+        
+    def cm_tail(self, args):
+        if not args:
+            self.output("Usage: tail <file> [lines]")
+            return
+        
+        target = args[0]
+        lines_to_show = int(args[1]) if len(args) > 1 else 10
+        
+        node, _ = self._resolve_or_report(target)
+        if node is None:
+            return
+        
+        if node.is_dir():
+            self.output("Error. tail: is a directory")
+            return
+        
+        text = node.read_text()
+        if text is None:
+            self.output("Error. tail: binary file")
+            return
+        
+        lines = text.splitlines()
+        for line in lines[-lines_to_show:]:
+            self.output(line)
+            
+    def cm_rmdir(self, args):
+        if not args:
+            self.output("Usage: rmdir <dir>")
+            return
+
+        target = args[0]
+        node, parts = self._resolve_or_report(target)
+        if node is None:
+            return
+
+        if not node.is_dir():
+            self.output(f"Error. rmdir: {target} is not a directory")
+            return
+
+        if node.list_names():
+            self.output(f"Error. rmdir: {target} is not empty")
+            return
+
+        if parts:
+            parent = get_node_by_parts(self.vfs_root, parts[:-1])
+            if parent and parent.is_dir():
+                del parent.children[parts[-1]]
+                self.output(f"Ok. removed {target}")
+        else:
+            self.output("Error. Cannot remove root directory")
+
+    def cm_chmod(self, args):
+        if len(args) < 2:
+            self.output("Usage: chmod <mode> <file|dir>")
+            return
+
+        mode = args[0]
+        target = args[1]
+        node, _ = self._resolve_or_report(target)
+        if node is None:
+            return
+
+        node.permissions = mode  # store in memory only
+        self.output(f"Ok. {target} permissions set to {mode}")
+       
+    def cm_mkdir(self, args):
+        if not args:
+            self.output("Usage: mkdir <dir>")
+            return
+
+        target = args[0]
+        if "/" in target:
+            parent_path, new_dir_name = target.rsplit("/", 1)
+        else:
+            parent_path, new_dir_name = "", target
+
+        parent_node, parent_parts = self._resolve_or_report(parent_path)
+        if parent_node is None or not parent_node.is_dir():
+            self.output(f"Error. mkdir: cannot create directory '{target}': parent does not exist")
+            return
+
+        if parent_node.get_child(new_dir_name):
+            self.output(f"Error. mkdir: cannot create directory '{target}': already exists")
+            return
+
+        new_dir = VFSDir(new_dir_name)
+        parent_node.add_child(new_dir)
+        self.output(f"Ok. directory '{target}' created")
         
     def _resolve_or_report(self, target):
         if not self.vfs_root:
