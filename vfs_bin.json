@@ -1,0 +1,7 @@
+{
+  "type": "dir",
+  "name": "/",
+  "children": [
+    {"type":"file","name":"image.bin","encoding":"base64","content":"SGVsbG8gYmluYXJ5IQ=="}
+  ]
+}

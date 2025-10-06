@@ -1,0 +1,7 @@
+{
+  "type": "dir",
+  "name": "/",
+  "children": [
+    {"type": "file", "name": "hello.txt", "encoding": "utf-8", "content": "Hello from VFS!"}
+  ]
+}
