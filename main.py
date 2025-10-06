@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 import json
 import base64
+import datetime
 
 class VFSNode:
     def __init__(self, name):
@@ -195,12 +196,18 @@ class ShellEmu:
         
         if command == "exit":
             self.cm_exit()
+        elif command == "clear":
+            self.cm_clear()
+        elif command == "wc":
+            self.cm_ws(args)
+        elif command == "date":
+            self.cm_date()
         elif command == "help":
             self.cm_help()
         elif command == "ls" or command == "dir":
-            self.output(command + "".join(args))
+            self.cm_ls(args)
         elif command == "cd":
-            self.output(command + "".join(args))
+            self.cm_cd(args)
         elif command == "conf-dump":
             self.cm_confdump()
         else:
@@ -225,12 +232,18 @@ class ShellEmu:
             
             if command == "exit":
                 self.cm_exit()
+            elif command == "clear":
+                self.cm_clear()
+            elif command == "wc":
+                self.cm_ws(args)
+            elif command == "date":
+                self.cm_date()
             elif command == "help":
                 self.cm_help()
             elif command == "ls" or command == "dir":
-                self.output(command + "".join(args))
+                self.cm_ls(args)
             elif command == "cd":
-                self.output(command + "".join(args))
+                self.cm_cd(args)
             elif command == "conf-dump":
                 self.cm_confdump()
             else:
@@ -252,6 +265,86 @@ class ShellEmu:
     def cm_confdump(self):
         self.output(f"vfs_path={self.vfs_path}")
         self.output(f"start_path={self.start_path}")
+        
+    def cm_clear(self):
+        self.history.config(state="normal")
+        self.history.delete(1.0, tk.END)
+        self.history.config(state="disabled")
+    
+    def cm_ws(self, args):
+        if not args:
+            self.output("Usage: wc <file>")
+            return
+
+        target = args[0]
+        node, _ = self._resolve_or_report(target)
+        if node is None:
+            return
+
+        if node.is_dir():
+            self.output("Error. wc: is a directory")
+            return
+
+        text = node.read_text()
+        if text is None:
+            size = len(node.content)
+            self.output(f"{0:7} {0:7} {size:7} {target}")
+            return
+
+        lines = text.splitlines()
+        words = text.split()
+        bytes_count = len(node.content)
+
+        self.output(f"{len(lines):7} {len(words):7} {bytes_count:7} {target}")
+        
+    def cm_date(self):
+        now = datetime.datetime.now()
+        self.output(now.strftime("%Y-%m-%d %H:%M:%S"))
+        
+    def cm_ls(self, args):
+        if not self.vfs_root:
+            self.output("Error. No VFS loaded. Cannot list directories.")
+            return
+        
+        target = args[0] if args else ""
+        node, parts = self._resolve_or_report(target)
+        if node is None:
+            return
+        if node.is_dir():
+            for name in node.list_names():
+                child = node.get_child(name)
+                marker = "/" if child.is_dir() else ""
+                self.output(name + marker)
+        else:
+            self.output(node.name)
+        
+    def cm_cd(self, args):
+        if not self.vfs_root:
+            self.output("Error. No VFS loaded. Cannot list directories.")
+            return
+                
+        if not self.vfs_root:
+            self.output("Error. No VFS loaded.")
+            return
+        target = args[0] if args else ""
+        node, parts = resolve_path(self.vfs_root, self.cwd_parts, target) if target != "" else (self.vfs_root, [])
+        if node is None or not node.is_dir():
+            self.output("No such directory: " + (target or "/"))
+            return
+        self.cwd_parts = parts
+        
+    def _resolve_or_report(self, target):
+        if not self.vfs_root:
+            self.output("Error. No VFS loaded.")
+            return None, None
+        if target == "":
+            node = get_node_by_parts(self.vfs_root, self.cwd_parts)
+            return node, list(self.cwd_parts)
+        node, parts = resolve_path(self.vfs_root, self.cwd_parts, target)
+        if node is None:
+            self.output("No such file or directory: " + target)
+            return None, None
+        return node, parts
         
 def main():
     parser = argparse.ArgumentParser()
