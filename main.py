@@ -4,9 +4,28 @@ import os
 import getpass
 import platform
 import sys
+import argparse
+from pathlib import Path
 
 class ShellEmu:
-    def __init__(self):
+    def __init__(self, vfs_path, start_path):
+        self.vfs_path = vfs_path
+        self.start_path = start_path
+        
+        self.vfs_root = None
+        if self.vfs_path:
+            p = Path(self.vfs_path)
+            if p.exists():
+                try:
+                    self.vfs_root = load_vfs_from_json(p)
+                except Exception as e:
+                    print(f"Failed to load VFS: {e}", file=sys.stderr)
+                    self.vfs_root = None
+            else:
+                print("VFS file not found:", self.vfs_path)
+
+        self.cwd_parts = []
+        
         self.root = tk.Tk()
         
         try:
@@ -54,15 +73,50 @@ class ShellEmu:
         
         if command == "exit":
             self.cm_exit()
+        elif command == "help":
+            self.cm_help()
         elif command == "ls" or command == "dir":
             self.output(command + "".join(args))
         elif command == "cd":
             self.output(command + "".join(args))
+        elif command == "conf-dump":
+            self.cm_confdump()
+        else:
+            self.output("No such command: " + command)
+            return False
         
         self.input_field.delete(0, tk.END)
         
         self.history.yview(tk.END)
         #self.history.update()
+        
+    def execute_command_bad(self, full):      
+            tokens = full.split()
+            
+            if (len(tokens) == 0):
+                return True # not a fail so probably keep going it's fine
+                
+            self.output("> " + full)
+            
+            command = tokens[0]
+            args = tokens[1:]
+            
+            if command == "exit":
+                self.cm_exit()
+            elif command == "help":
+                self.cm_help()
+            elif command == "ls" or command == "dir":
+                self.output(command + "".join(args))
+            elif command == "cd":
+                self.output(command + "".join(args))
+            elif command == "conf-dump":
+                self.cm_confdump()
+            else:
+                self.output("No such command: " + command)
+                return False
+                
+            self.history.yview(tk.END)
+            return True
         
     def output(self, text):
         self.history.config(state="normal")
@@ -73,8 +127,17 @@ class ShellEmu:
         self.root.destroy()
         #exit(0)
         
+    def cm_confdump(self):
+        self.output(f"vfs_path={self.vfs_path}")
+        self.output(f"start_path={self.start_path}")
+        
 def main():
-    emu = ShellEmu()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--vfs-path", help="VFS location on drive", required=False, default="")
+    parser.add_argument("--start-path", help="Start script location on drive", required=False, default="")
+    args = vars(parser.parse_args())
+    
+    emu = ShellEmu(args.get("vfs_path", ""), args.get("start_path", ""))
     
 if __name__ == "__main__":
     main()
