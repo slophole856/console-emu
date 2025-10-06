@@ -6,6 +6,128 @@ import platform
 import sys
 import argparse
 from pathlib import Path
+import argparse
+from pathlib import Path
+import json
+import base64
+
+class VFSNode:
+    def __init__(self, name):
+        self.name = name
+
+    def is_dir(self):
+        return False
+
+    def is_file(self):
+        return False
+
+class VFSFile(VFSNode):
+    def __init__(self, name, content_bytes, encoding="raw"):
+        super().__init__(name)
+        self.content = content_bytes
+        self.encoding = encoding      # utf-8, raw
+
+    def is_file(self):
+        return True
+
+    def read_text(self, errors="replace"):
+        if self.encoding == "utf-8":
+            return self.content.decode("utf-8", errors=errors)
+        else:
+            return None
+
+    def read_hex(self):
+        return self.content.hex()
+
+class VFSDir(VFSNode):
+    def __init__(self, name):
+        super().__init__(name)
+        self.children = {}
+
+    def is_dir(self):
+        return True
+
+    def add_child(self, node):
+        self.children[node.name] = node
+
+    def get_child(self, name):
+        return self.children.get(name)
+
+    def list_names(self):
+        return sorted(self.children.keys())
+        
+def load_vfs_from_json(path: Path):
+    def build_node(obj):
+        t = obj.get("type")
+        name = obj.get("name", "")
+        if t == "dir":
+            d = VFSDir(name)
+            for child in obj.get("children", []):
+                node = build_node(child)
+                d.add_child(node)
+            return d
+        elif t == "file":
+            enc = obj.get("encoding", "utf-8")
+            raw = obj.get("content", "")
+            if enc == "base64":
+                try:
+                    b = base64.b64decode(raw)
+                except Exception:
+                    b = b""
+            elif enc == "utf-8":
+                b = raw.encode("utf-8")
+            else:
+                b = raw.encode("utf-8")
+            return VFSFile(name, b, encoding=enc if enc == "utf-8" else "raw")
+        else:
+            raise ValueError("Unknown node type: " + str(t))
+
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    root = build_node(data)
+    if not root.is_dir():
+        raise ValueError("Top-level VFS node must be a dir. Why you have no root folder")
+    return root
+
+def resolve_path(root: VFSDir, cwd_parts, path_str):
+    if path_str == "":
+        return root, []
+    parts = [p for p in path_str.split("/") if p != ""]
+    if path_str.startswith("/"):
+        cur = root
+        cur_parts = []
+    else:
+        cur = get_node_by_parts(root, cwd_parts)
+        cur_parts = list(cwd_parts)
+    for p in parts:
+        if p == ".":
+            continue
+        if p == "..":
+            if cur_parts:
+                cur_parts.pop()
+                cur = get_node_by_parts(root, cur_parts)
+            else:
+                cur = root
+                cur_parts = []
+            continue
+        if not cur or not cur.is_dir():
+            return None, None
+        nxt = cur.get_child(p)
+        if nxt is None:
+            return None, None
+        cur = nxt
+        cur_parts.append(p)
+    return cur, cur_parts
+
+def get_node_by_parts(root, parts):
+    cur = root
+    for p in parts:
+        if not isinstance(cur, VFSDir):
+            return None
+        cur = cur.get_child(p)
+        if cur is None:
+            return None
+    return cur
 
 class ShellEmu:
     def __init__(self, vfs_path, start_path):

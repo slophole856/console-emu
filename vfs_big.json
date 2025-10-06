@@ -1,0 +1,13 @@
+{
+  "type": "dir",
+  "name": "/",
+  "children": [
+    {"type":"dir","name":"a","children":[
+      {"type":"dir","name":"b","children":[
+        {"type":"dir","name":"c","children":[
+          {"type":"file","name":"deep.txt","encoding":"utf-8","content":"deep content"}
+        ]}
+      ]}
+    ]}
+  ]
+}

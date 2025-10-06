@@ -1,0 +1,10 @@
+ls
+cd etc
+pwd
+ls
+cd ..
+tree
+fail
+tail hello.txt
+tail nonexist.txt
+cd ..
